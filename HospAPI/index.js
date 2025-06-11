@@ -148,6 +148,121 @@ app.get('/staff',async(req,res)=>{
     }
 });
 
+app.post('/add_doctor', async (req, res) => {
+  const { doctor_id, name, specialization, phone, email, dept_id } = req.body;
+
+  // Validate required fields
+  if (!doctor_id || !name || !specialization || !phone || !email || !dept_id) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'All fields are required' 
+    });
+  }
+
+  if (!/^\d+$/.test(phone)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Phone number should contain only digits'
+    });
+  }
+
+  if (!email.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid email format'
+    });
+  }
+
+  try {
+    
+    const existingdoctor = await pool.query(
+      'SELECT * FROM Doctors WHERE doctor_id = $1', 
+      [doctor_id]
+    );
+
+    if (existingdoctor.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Doctor ID already exists'
+      });
+    }
+
+    const departmentExists = await pool.query(
+      'SELECT * FROM department WHERE department_id = $1',
+      [dept_id]
+    );
+
+    if (departmentExists.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Department not found'
+      });
+    }
+
+    // Insert new doctor
+    const insertQuery = `
+      INSERT INTO doctors (doctor_id, name, specialization, phone, email, department_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+    `;
+    
+    const result = await pool.query(insertQuery, [
+      doctor_id, 
+      name, 
+      specialization, 
+      phone, 
+      email, 
+      dept_id
+    ]);
+
+    res.status(201).json({ 
+      success: true,
+      message: 'Doctor added successfully',
+      doctor: result.rows[0] 
+    });
+
+  } catch (err) {
+    console.error('Error inserting doctor:', err);
+    
+    
+    if (err.code === '23505' && err.constraint === 'doctors_email_key') {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already exists'
+      });
+    }
+
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to add doctor',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
+app.post('/add_patient', async (req, res) => {
+  const { patient_id, name, gender, dob, phone, address } = req.body;
+
+  if (!patient_id || !name || !gender || !dob || !phone || !address) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+
+  try {
+    const insertQuery = `
+      INSERT INTO Patients (patient_id, name, gender, dob, phone, address)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+    `;
+    const result = await pool.query(insertQuery, [patient_id, name, gender, dob, phone, address]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error inserting patient:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
 
 
 const PORT = process.env.PORT;
